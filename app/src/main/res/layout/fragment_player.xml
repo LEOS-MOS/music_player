@@ -12,7 +12,6 @@
         android:layout_height="56dp"
         android:background="@drawable/bg_gradient_toolbar"
         app:navigationIcon="@drawable/ic_back"
-        app:title="Player"
         app:titleTextColor="@android:color/white" />
 
     <TextView
