@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -14,21 +13,28 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.muzzio.data.PlaylistStorage
 import com.example.muzzio.data.models.Track
 import com.example.muzzio.databinding.FragmentTrackListBinding
+import com.example.muzzio.domain.usecase.GetTracksUseCase
 import com.example.muzzio.player.PlayerController
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
-import java.io.File
 
 @AndroidEntryPoint
 class TrackListFragment : Fragment() {
 
     @Inject
     lateinit var controller: PlayerController
+
+    @Inject
+    lateinit var getTracks: GetTracksUseCase
 
     private var _binding: FragmentTrackListBinding? = null
     private val binding get() = _binding!!
@@ -87,36 +93,9 @@ class TrackListFragment : Fragment() {
     }
 
     private fun loadTracksAndInit() {
-        tracks = loadTracks()
-
-        adapter = TrackAdapter(tracks) { index ->
-            if (playlistId == null) {
-                // очередь для главного меню создаётся здесь
-                if (controller.getCurrentPlaylist() != null || !controller.isSameTrack(index)) {
-                    controller.resetPlaylist()
-                    controller.setTrackListFromAllTracks(index)
-                }
-
-                val action = TrackListFragmentDirections
-                    .actionTrackListFragmentToPlayerFragment(index)
-                findNavController().navigate(action)
-
-            } else {
-                val storage = PlaylistStorage(requireContext())
-                val playlist = storage.getAll().first { it.id == playlistId }
-                val path = tracks[index].path
-
-                if (!playlist.tracks.contains(path)) {
-                    playlist.tracks.add(path)
-                    storage.updatePlaylist(playlist)
-                    Toast.makeText(requireContext(), "Трек добавлен", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(requireContext(), "Трек уже в плейлисте", Toast.LENGTH_SHORT).show()
-                }
-
-                findNavController().popBackStack()
-            }
-        }
+        // сразу показываем то, что уже загружено раньше (если есть),
+        // а свежий список подгружаем в фоне
+        adapter = TrackAdapter(tracks) { index -> onTrackClicked(index) }
 
         binding.recyclerTracks.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerTracks.adapter = adapter
@@ -131,20 +110,43 @@ class TrackListFragment : Fragment() {
             )
             insets
         }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val loaded = withContext(Dispatchers.IO) { getTracks() }
+            tracks = loaded
+            adapter.update(loaded)
+        }
     }
 
-    private fun loadTracks(): List<Track> {
-        val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        val files = dir.listFiles() ?: return emptyList()
-
-        return files
-            .filter { it.isFile && it.name.endsWith(".mp3") }
-            .map { file ->
-                Track(
-                    title = file.nameWithoutExtension,
-                    path = file.path
-                )
+    private fun onTrackClicked(index: Int) {
+        if (playlistId == null) {
+            // очередь для главного меню создаётся здесь
+            if (controller.getCurrentPlaylist() != null || !controller.isSameTrack(index)) {
+                controller.resetPlaylist()
+                controller.setTrackListFromAllTracks(index)
             }
+
+            val action = TrackListFragmentDirections
+                .actionTrackListFragmentToPlayerFragment(index)
+            findNavController().navigate(action)
+
+        } else {
+            val storage = PlaylistStorage(requireContext())
+            val playlist = storage.getAll().first { it.id == playlistId }
+            val path = tracks[index].path
+
+            if (!playlist.tracks.contains(path)) {
+                playlist.tracks.add(path)
+                storage.updatePlaylist(playlist)
+                // если этот плейлист сейчас играет, трек сразу попадёт и в очередь
+                controller.onPlaylistTrackAdded(playlist.id, path)
+                Toast.makeText(requireContext(), "Трек добавлен", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(requireContext(), "Трек уже в плейлисте", Toast.LENGTH_SHORT).show()
+            }
+
+            findNavController().popBackStack()
+        }
     }
 
     override fun onDestroyView() {

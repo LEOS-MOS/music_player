@@ -86,7 +86,8 @@ class PlaylistFragment : Fragment() {
             ) = false
 
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
-                val index = viewHolder.adapterPosition
+                val index = viewHolder.bindingAdapterPosition
+                if (index == RecyclerView.NO_POSITION) return
 
                 // удаляем трек из плейлиста
                 playlist.tracks.removeAt(index)
@@ -94,6 +95,9 @@ class PlaylistFragment : Fragment() {
 
                 // обновляем адаптер
                 adapter.notifyItemRemoved(index)
+
+                // если этот плейлист сейчас играет, убираем трек и из очереди плеера
+                controller.onPlaylistTrackRemoved(playlist, index)
             }
         }
 

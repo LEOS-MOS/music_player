@@ -3,7 +3,6 @@ package com.example.muzzio.presentation.ui
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
-import com.example.muzzio.R
 import com.example.muzzio.databinding.ItemTrackBinding
 
 class PlaylistTracksAdapter(
@@ -30,22 +29,9 @@ class PlaylistTracksAdapter(
 
     override fun onBindViewHolder(holder: TrackViewHolder, position: Int) {
         val path = tracks[position]
-        val cover = holder.binding.ivCover
-
         holder.binding.tvTitle.text =
             path.substringAfterLast("/").substringBeforeLast(".")
-
-        val sizePx = (48 * cover.resources.displayMetrics.density).toInt()
-
-        CoverLoader.load(cover, path, sizePx) { bitmap ->
-            if (bitmap != null) {
-                cover.setImageBitmap(bitmap)
-                cover.background = null
-            } else {
-                cover.setImageResource(R.drawable.ic_music_placeholder)
-                cover.setBackgroundResource(R.drawable.bg_button_gradient)
-            }
-        }
+        holder.binding.ivCover.showListCover(path)
     }
 
     override fun getItemCount(): Int = tracks.size

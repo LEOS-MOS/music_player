@@ -7,13 +7,13 @@ import android.os.Handler
 import android.os.Looper
 import android.util.LruCache
 import android.widget.ImageView
+import com.example.muzzio.R
 import java.util.Collections
 import java.util.concurrent.Executors
 
 /**
  * Загружает обложки треков в фоне, уменьшает их до нужного размера
- * и кэширует готовые Bitmap. Раньше всё это происходило в главном потоке
- * прямо во время прокрутки списка, из-за чего и были подлагивания.
+ * и кэширует готовые Bitmap.
  */
 object CoverLoader {
 
@@ -67,12 +67,25 @@ object CoverLoader {
         }
     }
 
-    private fun decodeCover(path: String, targetSizePx: Int): Bitmap? {
+    fun decodeCover(path: String, targetSizePx: Int): Bitmap? =
+        extractEmbeddedPicture(path)?.let { decodeSampled(it, targetSizePx) }
+
+    /** Достаёт встроенную обложку из аудиофайла (сырые байты картинки). */
+    fun extractEmbeddedPicture(path: String): ByteArray? {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(path)
-            val bytes = retriever.embeddedPicture ?: return null
+            retriever.embeddedPicture
+        } catch (e: Exception) {
+            null
+        } finally {
+            try { retriever.release() } catch (_: Exception) {}
+        }
+    }
 
+    /** Декодирует картинку сразу в уменьшенном размере, чтобы не тратить память. */
+    fun decodeSampled(bytes: ByteArray, targetSizePx: Int): Bitmap? {
+        return try {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
 
@@ -87,8 +100,30 @@ object CoverLoader {
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
         } catch (e: Exception) {
             null
-        } finally {
-            try { retriever.release() } catch (_: Exception) {}
+        }
+    }
+}
+
+/**
+ * Показывает обложку трека в списке: скруглённую картинку или
+ * скруглённую градиентную заглушку, если обложки нет.
+ */
+fun ImageView.showListCover(path: String) {
+    val density = resources.displayMetrics.density
+    val sizePx = (48 * density).toInt()
+
+    CoverLoader.load(this, path, sizePx) { bitmap ->
+        if (bitmap != null) {
+            setPadding(0, 0, 0, 0)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setBackgroundResource(R.drawable.bg_cover_list_rounded)
+            setImageBitmap(bitmap)
+        } else {
+            val pad = (2 * density).toInt()
+            setPadding(pad, pad, pad, pad)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setBackgroundResource(R.drawable.bg_cover_list_placeholder)
+            setImageResource(R.drawable.ic_music_placeholder)
         }
     }
 }

@@ -2,10 +2,12 @@ package com.example.muzzio.player
 
 import android.net.Uri
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.muzzio.data.models.Playlist
 import com.example.muzzio.presentation.ui.TrackListFragment
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,18 +23,35 @@ class PlayerController @Inject constructor(
     enum class RepeatMode { OFF, ALL, ONE }
     private var repeatMode: RepeatMode = RepeatMode.OFF
 
+    private fun titleFromPath(path: String): String =
+        path.substringAfterLast("/").substringBeforeLast(".")
+
+    /**
+     * Один трек в очереди. mediaId = путь к файлу, по нему мы всегда
+     * можем понять, какой трек играет. В metadata лежат название
+     * (для уведомления) и метка для загрузки обложки.
+     */
+    private fun buildMediaItem(path: String, title: String): MediaItem {
+        val metadata = MediaMetadata.Builder()
+            .setTitle(title)
+            .setArtworkUri(CoverBitmapLoader.coverUri(path))
+            .build()
+
+        return MediaItem.Builder()
+            .setMediaId(path)
+            .setUri(Uri.fromFile(File(path)))
+            .setMediaMetadata(metadata)
+            .build()
+    }
+
     // Только для режима списка (главное меню)
     fun isSameTrack(index: Int): Boolean {
-        val current = player.currentMediaItem?.localConfiguration?.uri ?: return false
-
         if (!trackListMode || currentPlaylist != null) return false
 
+        val currentPath = player.currentMediaItem?.mediaId ?: return false
         val newPath = TrackListFragment.tracks.getOrNull(index)?.path ?: return false
 
-        val currentName = current.lastPathSegment ?: return false
-        val newName = newPath.substringAfterLast("/")
-
-        return currentName == newName
+        return currentPath == newPath
     }
 
     fun resetPlaylist() {
@@ -47,7 +66,7 @@ class PlayerController @Inject constructor(
 
         player.clearMediaItems()
         playlist.tracks.forEach { path ->
-            player.addMediaItem(MediaItem.fromUri(Uri.parse(path)))
+            player.addMediaItem(buildMediaItem(path, titleFromPath(path)))
         }
 
         player.prepare()
@@ -61,12 +80,35 @@ class PlayerController @Inject constructor(
 
         player.clearMediaItems()
         TrackListFragment.tracks.forEach { track ->
-            player.addMediaItem(MediaItem.fromUri(Uri.parse(track.path)))
+            player.addMediaItem(buildMediaItem(track.path, track.title))
         }
 
         player.prepare()
         player.seekTo(index, 0)
         player.play()
+    }
+
+    /** Трек удалён из плейлиста, который сейчас играет: убираем его и из очереди. */
+    fun onPlaylistTrackRemoved(playlist: Playlist, index: Int) {
+        val current = currentPlaylist ?: return
+        if (current.id != playlist.id) return
+
+        // если это тот же самый список, он уже изменён снаружи
+        if (current.tracks !== playlist.tracks && index in current.tracks.indices) {
+            current.tracks.removeAt(index)
+        }
+        if (index in 0 until player.mediaItemCount) {
+            player.removeMediaItem(index)
+        }
+    }
+
+    /** Трек добавлен в плейлист, который сейчас играет: добавляем в конец очереди. */
+    fun onPlaylistTrackAdded(playlistId: String, path: String) {
+        val current = currentPlaylist ?: return
+        if (current.id != playlistId || current.tracks.contains(path)) return
+
+        current.tracks.add(path)
+        player.addMediaItem(buildMediaItem(path, titleFromPath(path)))
     }
 
     fun toggleRepeat() {
@@ -106,33 +148,12 @@ class PlayerController @Inject constructor(
         player.seekTo(position)
     }
 
-    fun getCurrentTitle(): String {
-        val index = player.currentMediaItemIndex
+    fun getCurrentTitle(): String =
+        player.currentMediaItem?.mediaMetadata?.title?.toString() ?: "No track"
 
-        currentPlaylist?.let { playlist ->
-            return playlist.tracks
-                .getOrNull(index)
-                ?.substringAfterLast("/")
-                ?.substringBeforeLast(".")
-                ?: "No track"
-        }
-
-        if (trackListMode) {
-            return TrackListFragment.tracks
-                .getOrNull(index)
-                ?.title
-                ?: "No track"
-        }
-
-        player.currentMediaItem?.localConfiguration?.uri?.let { uri ->
-            return uri.lastPathSegment
-                ?.substringAfterLast("/")
-                ?.substringBeforeLast(".")
-                ?: "No track"
-        }
-
-        return "No track"
-    }
+    /** Путь к файлу играющего трека (или null, если очередь пуста). */
+    fun getCurrentTrackPath(): String? =
+        player.currentMediaItem?.mediaId?.takeIf { it.isNotEmpty() }
 
     fun getCurrentPlaylist(): Playlist? = currentPlaylist
     fun getPlayer(): ExoPlayer = player

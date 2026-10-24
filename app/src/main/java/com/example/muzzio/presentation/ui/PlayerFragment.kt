@@ -8,6 +8,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.SeekBar
 import androidx.fragment.app.Fragment
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -32,18 +33,26 @@ class PlayerFragment : Fragment() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var isUserSeeking = false
-    private var uiUpdater: Runnable? = null
+
+    // Обновляет ползунок и время. Повторяется, только пока музыка играет.
+    private val progressRunnable = object : Runnable {
+        override fun run() {
+            if (_binding == null) return
+            updateProgress()
+            if (controller.getPlayer().isPlaying) {
+                handler.postDelayed(this, 200)
+            }
+        }
+    }
 
     private val playerListener = object : Player.Listener {
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (_binding == null) return
 
-            binding.btnPlayPause.setImageResource(
-                if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play
-            )
-
+            updatePlayPauseIcon(isPlaying)
             binding.tvTitle.text = controller.getCurrentTitle()
+            startProgress()
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -51,6 +60,12 @@ class PlayerFragment : Fragment() {
 
             binding.tvTitle.text = controller.getCurrentTitle()
             updateCover()
+            startProgress()
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (_binding == null) return
+            startProgress()
         }
     }
 
@@ -73,31 +88,26 @@ class PlayerFragment : Fragment() {
         player.addListener(playerListener)
 
         binding.tvTitle.text = controller.getCurrentTitle()
+        updatePlayPauseIcon(player.isPlaying)
         updateCover()
         updateRepeatIcon()
 
-        binding.seekBar.max = player.duration.toInt().coerceAtLeast(1)
+        binding.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
 
-        binding.seekBar.setOnSeekBarChangeListener(object :
-            android.widget.SeekBar.OnSeekBarChangeListener {
-
-            override fun onProgressChanged(
-                seekBar: android.widget.SeekBar?,
-                progress: Int,
-                fromUser: Boolean
-            ) {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
                     binding.tvCurrentTime.text = formatTime(progress.toLong())
                 }
             }
 
-            override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
                 isUserSeeking = true
             }
 
-            override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 isUserSeeking = false
                 player.seekTo(seekBar?.progress?.toLong() ?: 0L)
+                startProgress()
             }
         })
 
@@ -110,27 +120,43 @@ class PlayerFragment : Fragment() {
             updateRepeatIcon()
         }
 
-        uiUpdater = object : Runnable {
-            override fun run() {
-                if (_binding == null) return
-
-                val p = controller.getPlayer()
-
-                if (!isUserSeeking) {
-                    binding.seekBar.max = p.duration.toInt().coerceAtLeast(1)
-                    binding.seekBar.progress = p.currentPosition.toInt()
-                    binding.tvCurrentTime.text = formatTime(p.currentPosition)
-                    binding.tvTotalTime.text = formatTime(p.duration)
-                }
-
-                handler.postDelayed(this, 200)
-            }
-        }
-        handler.post(uiUpdater!!)
-
         binding.toolbar.setNavigationOnClickListener {
             requireActivity().onBackPressedDispatcher.onBackPressed()
         }
+    }
+
+    // таймер работает, только пока экран плеера виден
+    override fun onStart() {
+        super.onStart()
+        startProgress()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        handler.removeCallbacks(progressRunnable)
+    }
+
+    private fun startProgress() {
+        handler.removeCallbacks(progressRunnable)
+        handler.post(progressRunnable)
+    }
+
+    private fun updateProgress() {
+        if (_binding == null || isUserSeeking) return
+
+        val p = controller.getPlayer()
+        val duration = p.duration.coerceAtLeast(0L)
+
+        binding.seekBar.max = duration.toInt().coerceAtLeast(1)
+        binding.seekBar.progress = p.currentPosition.toInt()
+        binding.tvCurrentTime.text = formatTime(p.currentPosition)
+        binding.tvTotalTime.text = formatTime(duration)
+    }
+
+    private fun updatePlayPauseIcon(isPlaying: Boolean) {
+        binding.btnPlayPause.setImageResource(
+            if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play
+        )
     }
 
     private fun updateRepeatIcon() {
@@ -147,19 +173,12 @@ class PlayerFragment : Fragment() {
     }
 
     private fun updateCover() {
-        val player = controller.getPlayer()
-        val index = player.currentMediaItemIndex
-
-        val trackPath = controller.getCurrentPlaylist()
-            ?.tracks
-            ?.getOrNull(index)
-            ?: TrackListFragment.tracks.getOrNull(index)?.path
-            ?: return
+        val trackPath = controller.getCurrentTrackPath() ?: return
 
         val cover = binding.ivCoverBig
         val density = resources.displayMetrics.density
 
-        CoverLoader.load(cover, trackPath, (600 * density / 2).toInt()) { bitmap ->
+        CoverLoader.load(cover, trackPath, (300 * density).toInt()) { bitmap ->
             if (_binding == null) return@load
             if (bitmap != null) {
                 cover.scaleType = ImageView.ScaleType.CENTER_CROP
@@ -185,9 +204,7 @@ class PlayerFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
 
-        uiUpdater?.let { handler.removeCallbacks(it) }
-        uiUpdater = null
-
+        handler.removeCallbacks(progressRunnable)
         controller.getPlayer().removeListener(playerListener)
 
         _binding = null
