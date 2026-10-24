@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/trackListFragment">
+
+    <!-- 📌 Главный экран — список треков -->
+    <fragment
+        android:id="@+id/trackListFragment"
+        android:name="com.example.muzzio.presentation.ui.TrackListFragment"
+        android:label="Track list">
+
+        <!-- Переход к плееру -->
+        <action
+            android:id="@+id/action_trackListFragment_to_playerFragment"
+            app:destination="@id/playerFragment" />
+
+        <!-- Аргумент playlistId — NULLABLE -->
+        <argument
+            android:name="playlistId"
+            app:argType="string"
+            app:nullable="true" />
+    </fragment>
+
+    <!-- 📌 Плеер -->
+    <fragment
+        android:id="@+id/playerFragment"
+        android:name="com.example.muzzio.presentation.ui.PlayerFragment"
+        android:label="Player">
+
+        <argument
+            android:name="index"
+            app:argType="integer" />
+    </fragment>
+
+    <!-- 📌 Экран списка плейлистов -->
+    <fragment
+        android:id="@+id/playlistListFragment"
+        android:name="com.example.muzzio.presentation.ui.PlaylistListFragment"
+        android:label="Playlists">
+
+        <action
+            android:id="@+id/action_playlistListFragment_to_playlistFragment"
+            app:destination="@id/playlistFragment" />
+    </fragment>
+
+    <!-- 📌 Экран конкретного плейлиста -->
+    <fragment
+        android:id="@+id/playlistFragment"
+        android:name="com.example.muzzio.presentation.ui.PlaylistFragment"
+        android:label="Playlist">
+
+        <!-- Аргумент — ID плейлиста -->
+        <argument
+            android:name="playlistId"
+            app:argType="string" />
+
+        <!-- Переход к списку треков (добавление трека в плейлист) -->
+        <action
+            android:id="@+id/action_playlistFragment_to_trackListFragment"
+            app:destination="@id/trackListFragment" />
+    </fragment>
+
+</navigation>
