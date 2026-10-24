@@ -3,7 +3,6 @@ package com.example.muzzio.service
 import android.app.PendingIntent
 import android.content.Intent
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.example.muzzio.R
@@ -50,7 +49,7 @@ class MusicService : MediaSessionService() {
         // а у нас плеер используется напрямую.
         addSession(mediaSession!!)
 
-        val notificationProvider = DefaultMediaNotificationProvider.Builder(this).build()
+        val notificationProvider = MuzzioNotificationProvider(this)
         notificationProvider.setSmallIcon(R.drawable.ic_music_note)
         setMediaNotificationProvider(notificationProvider)
     }

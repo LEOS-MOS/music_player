@@ -3,6 +3,7 @@ package com.example.muzzio.player
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.BitmapLoader
@@ -16,7 +17,7 @@ import java.util.concurrent.Executors
 
 /**
  * Достаёт обложку трека для уведомления и экрана блокировки.
- * Если у трека нет обложки, рисует такую же градиентную заглушку, как в списке.
+ * Если у трека нет обложки, рисует сине-фиолетовую градиентную заглушку.
  */
 @androidx.annotation.OptIn(UnstableApi::class)
 class CoverBitmapLoader(private val context: Context) : BitmapLoader {
@@ -39,15 +40,22 @@ class CoverBitmapLoader(private val context: Context) : BitmapLoader {
             bytes?.let { CoverLoader.decodeSampled(it, SIZE_PX) } ?: createPlaceholder()
         })
 
+    // Заглушка для треков без обложки: тёмно-синий -> королевский -> фиолетовый градиент
+    // с белой нотой. Android 12+ подбирает цвет карточки уведомления по цветам обложки,
+    // поэтому карточка получается в сине-фиолетовых тонах.
     private fun createPlaceholder(): Bitmap {
         val bitmap = Bitmap.createBitmap(SIZE_PX, SIZE_PX, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
 
-        ContextCompat.getDrawable(context, R.drawable.bg_button_gradient)?.mutate()?.let {
-            it.setBounds(0, 0, SIZE_PX, SIZE_PX)
-            it.draw(canvas)
+        GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(0xFF101A66.toInt(), 0xFF3A2BB0.toInt(), 0xFF7E3FC8.toInt())
+        ).apply {
+            setBounds(0, 0, SIZE_PX, SIZE_PX)
+            draw(canvas)
         }
-        ContextCompat.getDrawable(context, R.drawable.ic_music_placeholder)?.mutate()?.let {
+
+        ContextCompat.getDrawable(context, R.drawable.ic_music_note)?.mutate()?.let {
             val pad = SIZE_PX / 4
             it.setBounds(pad, pad, SIZE_PX - pad, SIZE_PX - pad)
             it.draw(canvas)
