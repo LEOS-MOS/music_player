@@ -1,14 +1,13 @@
 package com.example.muzzio.presentation.ui
 
 import android.content.Intent
-import android.graphics.BitmapFactory
-import android.media.MediaMetadataRetriever
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import androidx.fragment.app.Fragment
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -35,8 +34,6 @@ class PlayerFragment : Fragment() {
     private var isUserSeeking = false
     private var uiUpdater: Runnable? = null
 
-    private val coverCache = mutableMapOf<String, ByteArray?>()
-
     private val playerListener = object : Player.Listener {
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -47,7 +44,6 @@ class PlayerFragment : Fragment() {
             )
 
             binding.tvTitle.text = controller.getCurrentTitle()
-            updateCover()
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -150,18 +146,6 @@ class PlayerFragment : Fragment() {
         }
     }
 
-    private fun extractCover(path: String): ByteArray? {
-        return try {
-            val retriever = MediaMetadataRetriever()
-            retriever.setDataSource(path)
-            val data = retriever.embeddedPicture
-            retriever.release()
-            data
-        } catch (e: Exception) {
-            null
-        }
-    }
-
     private fun updateCover() {
         val player = controller.getPlayer()
         val index = player.currentMediaItemIndex
@@ -172,15 +156,21 @@ class PlayerFragment : Fragment() {
             ?: TrackListFragment.tracks.getOrNull(index)?.path
             ?: return
 
-        val coverBytes = coverCache.getOrPut(trackPath) {
-            extractCover(trackPath)
-        }
+        val cover = binding.ivCoverBig
+        val density = resources.displayMetrics.density
 
-        if (coverBytes != null) {
-            val bitmap = BitmapFactory.decodeByteArray(coverBytes, 0, coverBytes.size)
-            binding.ivCoverBig.setImageBitmap(bitmap)
-        } else {
-            binding.ivCoverBig.setImageResource(R.drawable.ic_music_note)
+        CoverLoader.load(cover, trackPath, (600 * density / 2).toInt()) { bitmap ->
+            if (_binding == null) return@load
+            if (bitmap != null) {
+                cover.scaleType = ImageView.ScaleType.CENTER_CROP
+                cover.setPadding(0, 0, 0, 0)
+                cover.setImageBitmap(bitmap)
+            } else {
+                val pad = (56 * density).toInt()
+                cover.scaleType = ImageView.ScaleType.CENTER_INSIDE
+                cover.setPadding(pad, pad, pad, pad)
+                cover.setImageResource(R.drawable.ic_music_note)
+            }
         }
     }
 

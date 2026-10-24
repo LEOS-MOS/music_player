@@ -1,7 +1,5 @@
 package com.example.muzzio.presentation.ui
 
-import android.graphics.BitmapFactory
-import android.media.MediaMetadataRetriever
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
@@ -13,8 +11,6 @@ class PlaylistTracksAdapter(
     private val onClick: (Int) -> Unit
 ) : RecyclerView.Adapter<PlaylistTracksAdapter.TrackViewHolder>() {
 
-    private val coverCache = mutableMapOf<String, ByteArray?>()
-
     inner class TrackViewHolder(val binding: ItemTrackBinding) :
         RecyclerView.ViewHolder(binding.root)
 
@@ -24,49 +20,33 @@ class PlaylistTracksAdapter(
             parent,
             false
         )
-        return TrackViewHolder(binding)
+        val holder = TrackViewHolder(binding)
+        binding.root.setOnClickListener {
+            val pos = holder.bindingAdapterPosition
+            if (pos != RecyclerView.NO_POSITION) onClick(pos)
+        }
+        return holder
     }
 
     override fun onBindViewHolder(holder: TrackViewHolder, position: Int) {
         val path = tracks[position]
-        val title = path.substringAfterLast("/").substringBeforeLast(".")
+        val cover = holder.binding.ivCover
 
-        holder.binding.tvTitle.text = title
+        holder.binding.tvTitle.text =
+            path.substringAfterLast("/").substringBeforeLast(".")
 
-        val coverBytes = coverCache.getOrPut(path) {
-            extractCover(path)
-        }
+        val sizePx = (48 * cover.resources.displayMetrics.density).toInt()
 
-        if (coverBytes != null) {
-            val bmp = BitmapFactory.decodeByteArray(coverBytes, 0, coverBytes.size)
-            holder.binding.ivCover.setImageBitmap(bmp)
-
-            // 🔥 Убираем подсветку, если есть обложка
-            holder.binding.ivCover.background = null
-
-        } else {
-            holder.binding.ivCover.setImageResource(R.drawable.ic_music_placeholder)
-
-            // 🔥 Возвращаем подсветку, если обложки нет
-            holder.binding.ivCover.setBackgroundResource(R.drawable.bg_button_gradient)
-        }
-
-        holder.itemView.setOnClickListener {
-            onClick(position)
+        CoverLoader.load(cover, path, sizePx) { bitmap ->
+            if (bitmap != null) {
+                cover.setImageBitmap(bitmap)
+                cover.background = null
+            } else {
+                cover.setImageResource(R.drawable.ic_music_placeholder)
+                cover.setBackgroundResource(R.drawable.bg_button_gradient)
+            }
         }
     }
 
     override fun getItemCount(): Int = tracks.size
-
-    private fun extractCover(path: String): ByteArray? {
-        return try {
-            val retriever = MediaMetadataRetriever()
-            retriever.setDataSource(path)
-            val data = retriever.embeddedPicture
-            retriever.release()
-            data
-        } catch (e: Exception) {
-            null
-        }
-    }
 }
